@@ -6,13 +6,32 @@ var AT = require('./lib/at');
 
 var FONA = module.exports = function() {
   Device.call(this);
-  this.smsMessages = {};
   this._serialPort = arguments[0];
   this._resetPin = arguments[1];
   this._apn = arguments[2];
+
   this._serialPort.on('data', function(data) {
     console.log('RAW ===\n\n' + data + '\n\n=== RAW');
   });
+  
+  // Properties
+  this.accessTechnology = null;
+  this.adcVoltage = null;
+  this.batteryPercentage = null;
+  this.batteryVoltage = null;
+  this.deviceDateTime = null;
+  this.fmVolume = null;
+  this.imei = null;
+  this.packetDomainServiceStatus = null;
+  this.packetDomainServiceStatusDescription = null;
+  this.receivedSignalStrengthCondition = null;
+  this.receivedSignalStrengthDBM = null;
+  this.simCCID = null;
+  this.smsCount = null;
+  this.smsMessages = {};
+  this.triangulationLongitude = null;
+  this.triangulationLongitude = null;
+  this.volume = null;
 };
 util.inherits(FONA, Device);
 
@@ -80,7 +99,7 @@ FONA.prototype.parse = function(data, regexp, cb) {
     this.log('match: true');
   } else {
     this.log('failed match on data: ' + data);
-    this.log('with regexp: ' + self._regexps[self._regexpIndex].toString());
+    this.log('with regexp: ' + this._regexps[this._regexpIndex].toString());
     this.log('URI encoded data: ' + encodeURI(data));
     throw new Error('failed match');
   }
