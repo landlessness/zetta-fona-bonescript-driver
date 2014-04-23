@@ -5,6 +5,7 @@ var Fona = module.exports = function(serialPort) {
   Device.call(this);
 
   this._serialPort = serialPort;
+  this.simCCID = null; // gets populated after data is parsed from device
 
   var self = this;
   this._serialPort.on('data', function(data){
@@ -71,7 +72,7 @@ Fona.prototype.parseData = function(data) {
       this.batteryPercentage = match[1];
       this.batteryVoltage = match[2];
       break;
-    case !!(match = data.match(/^(\d{20})$/)):
+    case !!(match = data.match(/^(\d[a-zA-Z0-9]*)$/)):
       this.simCCID = match[1];
       break;
     default:
