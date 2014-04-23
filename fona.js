@@ -74,10 +74,8 @@ FONA.prototype.parse = function(data, regexp, cb) {
   this.state = 'parsing';
   this.log('parsing data: "' + data + '"');
   this.log('parsing regexp: "' + regexp + '"');
-  var match = data.match(regexp);
-  this.log('parsing match: ' + match);
   this.state = 'waiting';
-  cb(match);
+  cb();
 };
 
 FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
@@ -342,24 +340,24 @@ FONA.prototype._setupWriteParseQueue = function(cb) {
     qContext._matches = [];
 
     var parseData = function(data) {
-      self.call('parse', data, task.regexps[qContext._regexpIndex], function(match) {
-        if (!!match) {
-          qContext._matches.push(match);
-          self.log('match: true');
-        } else {
-          self.log('failed match on data: ' + encodeURI(data));
-          self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
-          throw new Error('failed match');
-        }
-        qContext._regexpIndex++;
-      });
+      var regexp = task.regexps[qContext._regexpIndex];
+      self.call('parse', data, regexp);
+      var match = data.match(regexp);
+      if (!!match) {
+        qContext._matches.push(match);
+        self.log('match: true');
+      } else {
+        self.log('failed match on data: ' + encodeURI(data));
+        self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
+        throw new Error('failed match');
+      }
 
+      qContext._regexpIndex++;
       if (qContext._regexpIndex >= task.regexps.length) {
         self.log('remove serial port listener');
         self._serialPort.removeListener('data', arguments.callee);
         processMatch(qContext._matches);
       }
-
     };
 
     self.log('add serial port listener');
