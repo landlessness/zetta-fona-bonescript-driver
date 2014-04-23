@@ -39,7 +39,10 @@ Send a text message to the phoneNumber.
 ### Design
 
 #### Queueing
-The Zetta FONA driver uses a `queue` to execute underlying `serial` commands. The driver periodically executes `serial` commands in order to `monitor` key properties of the device. The internally-generated `serial` requests are `push`ed onto the back of the queue. Requests created by API consumers and other clients are `unshift`ed to the front of the queue.
+The Zetta FONA driver uses a `prioritizedQueue` to execute underlying `serial` commands. 
+The driver periodically executes `serial` commands in order to `monitor` key properties of the device. 
+The internally-generated `serial` requests are `push`ed onto the queue with low priority. 
+Requests created by API consumers and other clients are `push`ed onto the queue with high priority.
 
 #### Writing
 Write operations to the `serial` port are non-blocking.
@@ -49,10 +52,7 @@ Write operations to the `serial` port are non-blocking.
 Parsing of the `serial` data is via an event emitter.
 
 #### Reconciling
-So, in order for a long-running command - like requesting triangulated location - to finish before the next `serial` command is attempted the data parsing must send a signal to control the execution of the next write command.
-
-
-This is accomplished by a `queue` worker that executes the `write` command, `pause`s the `queue` and then goes into an async `whilst` loop waiting for the `emit`ted data to be parsed by the parser. Once the expected data is returned the worker `resume`s the queue.
+So, in order for a long-running command - like requesting triangulated location - to finish before the next `serial` command is attempted the queue worker waits until all data is parsed before sending its callback signal to continuethe execution of the next write command.
 
 ###Resources
 While designing and developing this node.js driver for FONA the following resources were helpful:
