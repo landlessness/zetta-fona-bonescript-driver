@@ -335,30 +335,10 @@ FONA.prototype._setupWriteParseQueue = function(cb) {
   var self = this;
   
   this._q = async.priorityQueue(function (task, processMatch) {
-    var qContext = this;
-    qContext._regexpIndex = 0;
-    qContext._matches = [];
-
-    var parseData = function(data) {
-      var regexp = task.regexps[qContext._regexpIndex];
-      self.call('parse', data, regexp);
-      var match = data.match(regexp);
-      if (!!match) {
-        qContext._matches.push(match);
-        self.log('match: true');
-      } else {
-        self.log('failed match on data: ' + encodeURI(data));
-        self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
-        throw new Error('failed match');
-      }
-
-      qContext._regexpIndex++;
-      if (qContext._regexpIndex >= task.regexps.length) {
-        self.log('remove serial port listener');
-        self._serialPort.removeListener('data', arguments.callee);
-        processMatch(qContext._matches);
-      }
-    };
+    self._regexpIndex = 0;
+    self._regexps = task.regexps;
+    self._matches = [];
+    self._processMatch = processMatch;
 
     self.log('add serial port listener');
     self._serialPort.on('data', parseData);
@@ -370,7 +350,28 @@ FONA.prototype._setupWriteParseQueue = function(cb) {
     }
 
   }, 1);
-  
+
+  var parseData = function(data) {
+    var regexp = self._regexps[self._regexpIndex];
+    self.call('parse', data, regexp);
+    var match = data.match(regexp);
+    if (!!match) {
+      self._matches.push(match);
+      self.log('match: true');
+    } else {
+      self.log('failed match on data: ' + encodeURI(data));
+      self.log('with regexp: ' + self._regexps[self._regexpIndex].toString());
+      throw new Error('failed match');
+    }
+
+    self._regexpIndex++;
+    if (self._regexpIndex >= self._regexps.length) {
+      self.log('remove serial port listener');
+      self._serialPort.removeListener('data', parseData);
+      self._processMatch(self._matches);
+    }
+  };
+
   cb();
 }
 
