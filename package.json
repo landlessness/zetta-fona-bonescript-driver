@@ -15,7 +15,8 @@
   "dependencies": {
     "zetta-device": "*",
     "zetta-scout": "*",
-    "serialport": "*"
+    "serialport": "*",
+    "bonescript": "*"
   },
   "bugs": {
     "url": "https://github.com/landlessness/zetta-starter-device-driver/issues"

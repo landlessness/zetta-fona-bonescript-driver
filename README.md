@@ -41,3 +41,4 @@ While designing and developing this node.js driver for FONA the following resour
 * [Adafruit FONA Library](https://github.com/adafruit/Adafruit_FONA_Library)
 * [AT Commands at M2MSupport](http://m2msupport.net/m2msupport/at-command/) 
   * Heplful site for understanding AT commands structure and responses
+* [SIM 800L Hardware Design (PDF)](http://www.headele.com/Datasheet/Wireless%20module/GPRS/SIMCOM/SIM800L_Hardware_Design_V1.00.pdf)

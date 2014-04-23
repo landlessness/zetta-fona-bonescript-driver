@@ -1,18 +1,20 @@
 var Scout = require('zetta-scout');
 var util = require('util');
 var FONA = require('./fona');
+var bone = require('bonescript');
 
 var serialport = require('serialport');
 
-var FONAScout = module.exports = function(deviceName) {
+var FONAScout = module.exports = function() {
   Scout.call(this);
-  this.deviceName = deviceName;
+  this.serialPortLocation = arguments[0];
+  this.resetPin = arguments[1];
   this._serialPort = null;
 };
 util.inherits(FONAScout, Scout);
 
 FONAScout.prototype.init = function(next) {
-  this._serialPort = new serialport.SerialPort(this.deviceName, {
+  this._serialPort = new serialport.SerialPort(this.serialPortLocation, {
     baudRate: 115200,
     parser: serialport.parsers.readline('\r\n')
   });
@@ -30,9 +32,9 @@ FONAScout.prototype.init = function(next) {
         return;
       }
       if (results.length) {
-        self.provision(results[0], FONA, self._serialPort);
+        self.provision(results[0], FONA, self._serialPort, self.resetPin);
       } else {
-        self.discover(FONA, self._serialPort);
+        self.discover(FONA, self._serialPort, self.resetPin);
       }
     });
     next();
