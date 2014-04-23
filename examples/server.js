@@ -1,8 +1,8 @@
 var zetta = require('zetta');
-var StarterDevice = require('../index');
+var Fona = require('../index');
 var app = require('./app');
 
 zetta()
-  .use(StarterDevice)
+  .use(Fona, '/dev/ttyO4')
   .use(app)
   .listen(1337);
