@@ -1,17 +1,24 @@
 var Device = require('zetta-device');
 var util = require('util');
 var bone = require('bonescript');
+var async = require('async');
 
 var FONA = module.exports = function() {
   Device.call(this);
   this.smsMessages = [];
   this._serialPort = arguments[0];
   this._resetPin = arguments[1];
+  
+  this._serialPort.on('data', function(data) {
+    console.log('RAW ===\n\n' + data + '\n\n=== RAW');
+  });
+
 };
 util.inherits(FONA, Device);
 
 FONA.prototype.init = function(config) {
-  
+  var self = this;
+
   config
   .name('Adafruit FONA')
   .type('FONA')
@@ -27,59 +34,72 @@ FONA.prototype.init = function(config) {
   .when('resetting-fona', {allow: ['parse']})
   .when('waiting', { allow: ['reset-fona', 'write', 'parse', 'send-sms', 'read-sms']})
   .when('parsing', { allow: ['reset-fona', 'write', 'parse', 'send-sms', 'read-sms']})
-  .when('writing', { allow: ['reset-fona', 'parse', 'write'] })
+  .when('writing', { allow: ['reset-fona'] })
   .map('reset-fona', this.resetFONA)
   .map('write', this.write, [{ name: 'command', type: 'text'}])
-  .map('parse', this.parse, [{ name: 'data', type: 'text'}])
+  .map('parse', this.parse, [{ name: 'data', type: 'text'}, { name: 'regexp', type: 'text'}])
   .map('read-sms', this.readSMS, [
-    { name: 'index', title: 'Message Index', type: 'range',
+    { name: 'messageIndex', title: 'Message Index', type: 'range',
       min: 1, step: 1}])
   .map('send-sms', this.sendSMS, [
     { name: 'phoneNumber', title: 'Phone Number to Send SMS', type: 'text'},
     { message: 'message', type: 'text'},
     ]);
   
-  var self = this;
-  this._serialPort.on('data', function(data){
-    self.call('parse', data);
-  });
-  
-  this.resetFONA(function() {
-    self._requestVitals();
-    setInterval(function() {
+  this._setupQueue(function() {
+    self.resetFONA(function() {
       self._requestVitals();
-    }, 5000);
+      setInterval(function() {
+      // self._requestVitals();
+      }, 5000);
+    });
   });
   
 };
 
-FONA.prototype.resetFONA = function(cb) {
+FONA.prototype._setupQueue = function(cb) {
+
   var self = this;
   
-  this.state = 'resetting-fona';
-  
-  bone.pinMode(this._resetPin, bone.OUTPUT);
-  
-  this.log('setting reset pin ' + this._resetPin + ' to ' + bone.HIGH);
-  bone.digitalWrite(this._resetPin, bone.HIGH);
-  setTimeout(function() {
-    self.log('setting reset pin ' + self._resetPin + ' to ' + bone.LOW);
-    bone.digitalWrite(self._resetPin, bone.LOW);
-    setTimeout(function() {
-      self.log('setting reset pin ' + self._resetPin + ' to ' + bone.HIGH);
-      bone.digitalWrite(self._resetPin, bone.HIGH);
-      self.state = 'waiting';
-      cb();
-    }, 100);
-  }, 10);
-  
+  this._q = async.priorityQueue(function (task, processMatch) {
+    console.log('1 current queue task: ', task);
+    var qContext = this;
+    qContext._regexpIndex = 0;
+    qContext._matches = [];
+    qContext._task = task;
+
+    var parseData = function(data) {
+      var task = qContext._task; // this should not be needed
+      console.log('qContext._regexpIndex: ', qContext._regexpIndex);
+      console.log('2 current queue task: ', task);
+      console.log('task.regexps[qContext._regexpIndex]: ', task.regexps[qContext._regexpIndex]);
+      self.call('parse', data, task.regexps[qContext._regexpIndex], function(match) {
+        if (!!match) {
+          qContext._matches.push(match);
+          self.log('match: true');
+        } else {
+          self.log('failed match on data: ' + encodeURI(data));
+          self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
+          throw new Error('failed match');
+        }
+        qContext._regexpIndex++;
+        if (qContext._regexpIndex >= task.regexps.length) {
+          self._serialPort.removeListener('data', arguments.callee);
+          processMatch(qContext._matches);
+        }
+      });
+    };
+    self._serialPort.on('data', parseData);
+    self.call('write', task.command);
+  }, 1);
+  cb();
 }
 
 FONA.prototype.write = function(command, cb) {
   this.state = 'writing';
   this.log('writing command: ' + command);
   var self = this;
-  this._serialPort.write(command + '\n\r', function(err, results) {
+  this._serialPort.write(command + "\n\r", function(err, results) {
     if (typeof err !== 'undefined') {
       self.log('write err ' + err);
       self.log('write results ' + results);
@@ -89,34 +109,61 @@ FONA.prototype.write = function(command, cb) {
   cb();
 };
 
-FONA.prototype.parse = function(data, cb) {
+FONA.prototype.parse = function(data, regexp, cb) {
   this.state = 'parsing';
-  this.log('parsing data: ' + data);
-  this._parseATData(data);
+  this.log('parsing data: "' + data + '"');
+  this.log('parsing regexp: "' + regexp + '"');
+  var match = data.match(regexp);
+  this.log('parsing match: ' + match);
   this.state = 'waiting';
-  cb();
+  cb(match);
 };
 
 FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
   this.state = 'sending-sms';
-  this._serialPort.write('AT+CMGF=1' + '\n\r');
-  this._serialPort.write('AT+CMGS="' + phoneNumber + '"' + '\n\r');
-  this._serialPort.write(message + '\n\r');
+  this._serialPort.write('AT+CMGF=1' + "\n\r");
+  this._serialPort.write('AT+CMGS="' + phoneNumber + "\"\n\r");
+  this._serialPort.write(message + "\n\r");
   this._serialPort.write([0x1a]);
   this.state = 'waiting';
   cb();
 };
 
-FONA.prototype.readSMS = function(index, cb) {
-  this.log('readSMS: ' + index);
-  this.call('write', 'AT+CMGF=1');
-  this.call('write', 'AT+CSDH=1');
-  this.call('write', 'AT+CMGR=' + index);
-  cb();
+FONA.prototype.readSMS = function(messageIndex, cb) {
+  var smsMessage = {};
+  
+  this.log('readSMS: ' + messageIndex);
+  var self = this;
+  this._enqueue({command: 'AT+CMGF=1', regexps: [/^AT\+CMGF=1/,/OK/]}, function() {});
+  this._enqueue({command: 'AT+CSDH=1', regexps: [/^AT\+CSDH=1/,/OK/]}, function() {});
+  this._enqueue(
+    { command: 'AT+CMGR=' + messageIndex, 
+      regexps: [/^AT\+CMGR=\d+/,
+        /^\+CMGR: "([A-Z]+) ([A-Z]+)","([^"]*)","([^"]*)","([^"]*)",(\d+),(\d+),(\d+),(\d+),"([^"]*)",(\d+),(\d+)/,
+        /^(.*)$/,
+        /^$/,
+        /^OK$/]},
+    function (matches) {
+      smsMessage = {
+        receivedState: matches[1][1],
+        readState: matches[1][2],
+        sendersPhoneNumber: matches[1][3],
+        timeStamp: matches[1][5],
+        body: matches[2][0]
+      };
+      self.log(smsMessage);
+      self.smsMessages[messageIndex] = smsMessage;
+      cb();
+    });
 }
 
 FONA.prototype._requestBatteryPercentAndVoltage = function() {
-  this.call('write', 'AT+CBC');
+  var self = this;
+  this._enqueue({command: 'AT+CBC', regexps: /^AT\+CBC\r\r\n\+CBC: .*,(.*),(.*)/},
+    function (match) {
+      self.batteryPercentage = match[1];
+      self.batteryVoltage = match[2];
+    });
 }
 
 FONA.prototype._requestADCVoltage = function() {
@@ -131,16 +178,6 @@ FONA.prototype._requestIMEI = function() {
   this.call('write', 'AT+GSN');
 }
 
-FONA.prototype._requestSMSCountAndCapacity = function() {
-  this.call('write', 'AT+CMGF=1');
-  this.call('write', 'AT+CPMS?');
-}
-
-FONA.prototype._requestSMSCountAndCapacity = function() {
-  this.call('write', 'AT+CMGF=1');
-  this.call('write', 'AT+CPMS?');
-}
-
 FONA.prototype._requestRegistrationStatusAndAccessTechnology = function() {
   this.call('write', 'AT+CREG?');
 }
@@ -149,12 +186,53 @@ FONA.prototype._requestSignalQuality = function() {
   this.call('write', 'AT+CSQ');
 }
 
+FONA.prototype._requestAllSMSMessages = function() {
+  // the SMS array is 1-based (not 0-based)
+  for (messageIndex = 1; messageIndex <= this.smsCount; messageIndex++) {
+    this.readSMS(messageIndex, function() {});
+  }
+}
+
+FONA.prototype._requestSMSCountAndCapacity = function() {
+  var self = this;
+
+  this._enqueue({command: 'AT+CMGF=1', regexps: [/^AT\+CMGF=1/,/OK/]}, function() {});
+
+  this._enqueue(
+    { command: 'AT+CPMS?', 
+      regexps: [
+        /^AT\+CPMS\?/,
+        /^\+CPMS: "[A-Z_]+",(\d+),(\d+),.*$/,
+        /^$/,
+        /^OK$/]},
+    function (matches) {
+      self.smsCount = matches[1][1];
+      self.smsCapacity = matches[1][2];
+    });
+}
+
 FONA.prototype._requestVolume = function() {
-  this.call('write', 'AT+CLVL?');
+  var self = this;
+  this._enqueue(
+    { command: 'AT+CLVL?', 
+      regexps: [
+        /^AT\+CLVL\?/,
+        /^\+CLVL: (\d+)/,
+        /^$/,
+        /^OK$/]},
+    function (matches) {self.volume = matches[1][1]});
 }
 
 FONA.prototype._requestFMVolume = function() {
-  this.call('write', 'AT+FMVOLUME?');
+  var self = this;
+  this._enqueue(
+    { command: 'AT+FMVOLUME?', 
+      regexps: [
+        /^AT\+FMVOLUME\?/,
+        /^\+FMVOLUME: (\d+)/,
+        /^$/,
+        /^OK$/]},
+    function (matches) {self.fmVolume = matches[1][1]});
 }
 
 FONA.prototype._requestDeviceDateTime = function() {
@@ -166,26 +244,43 @@ FONA.prototype._requestPacketDomainServiceStatus = function() {
 }
 
 FONA.prototype._requestTriangulatedLocation = function() {
-  this.call('write', 'AT+SAPBR=1,1');
-  this.call('write', 'AT+CIPGSMLOC=1,1');
+  var self = this;
+  // TODO: get this working
+  this._enqueue({command: 'AT+SAPBR=1,1', regexps: /^AT\+SAPBR=1,1\r\r\nOK/}, function() {});
+    
+  this._enqueue({command: 'AT+CIPGSMLOC=1,1', regexps: /^AT\+CIPGSMLOC=1,1\r\r\n\+CIPGSMLOC: (\d+)/},
+    function (match) {self.fmVolume = match[1]});
 }
 
 FONA.prototype._requestVitals = function(context) {
   if (this.available('write')) {
-    this._requestDeviceDateTime();
-    this._requestPacketDomainServiceStatus();
-    this._requestVolume();
     this._requestFMVolume();
-    this._requestADCVoltage();
-    this._requestBatteryPercentAndVoltage();
-    this._requestSMSCountAndCapacity();
-    this._requestSIMCCID();
-    this._requestIMEI();
-    this._requestRegistrationStatusAndAccessTechnology();
-    this._requestSignalQuality();
-    this._requestTriangulatedLocation();
+    this._requestVolume();
+    // this._requestSMSCountAndCapacity();
+    // this._requestAllSMSMessages();
+    // this._requestDeviceDateTime();
+    // this._requestPacketDomainServiceStatus();
+    // this._requestADCVoltage();
+    // this._requestBatteryPercentAndVoltage();
+    // this._requestSIMCCID();
+    // this._requestIMEI();
+    // this._requestRegistrationStatusAndAccessTechnology();
+    // this._requestSignalQuality();
+    // this._requestTriangulatedLocation();
   }
 }
+
+FONA.prototype._enqueue = function(command, cb) {
+  var self = this;
+  this._q.push(
+    command,
+    1,
+    function (err) {
+      var matches = arguments[0];
+      cb(matches);
+    });
+}
+
 
 FONA.prototype._parseATData = function(data) {
   var match = null;
@@ -240,7 +335,7 @@ FONA.prototype._parseATData = function(data) {
           receivedState: match[1],
           readState: match[2],
           sendersPhoneNumber: match[3],
-          timeStamp: match[5],
+          timeStamp: match[5]
         }
       );
       break;
@@ -255,6 +350,27 @@ FONA.prototype._parseATData = function(data) {
     default:
       break;
   }
+}
+
+FONA.prototype.resetFONA = function(cb) {
+  var self = this;
+  
+  this.state = 'resetting-fona';
+  
+  bone.pinMode(this._resetPin, bone.OUTPUT);
+  
+  this.log('setting reset pin ' + this._resetPin + ' to ' + bone.HIGH);
+  bone.digitalWrite(this._resetPin, bone.HIGH);
+  setTimeout(function() {
+    self.log('setting reset pin ' + self._resetPin + ' to ' + bone.LOW);
+    bone.digitalWrite(self._resetPin, bone.LOW);
+    setTimeout(function() {
+      self.log('setting reset pin ' + self._resetPin + ' to ' + bone.HIGH);
+      bone.digitalWrite(self._resetPin, bone.HIGH);
+      self.state = 'waiting';
+      cb();
+    }, 100);
+  }, 10);
 }
 
 FONA.prototype._receivedSignalStrengthIndicatorMap = {

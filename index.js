@@ -16,6 +16,7 @@ util.inherits(FONAScout, Scout);
 FONAScout.prototype.init = function(next) {
   this._serialPort = new serialport.SerialPort(this.serialPortLocation, {
     baudRate: 115200,
+    // parser: serialport.parsers.raw
     parser: serialport.parsers.readline('\r\n')
   });
 
