@@ -75,9 +75,68 @@ FONA.prototype.parse = function(data, regexp, cb) {
   this.state = 'parsing';
   this.log('parsing data: "' + data + '"');
   this.log('parsing regexp: "' + regexp + '"');
+  var match = data.match(regexp);
+  if (!!match) {
+    this.log('match: true');
+  } else {
+    this.log('failed match on data: ' + data);
+    this.log('with regexp: ' + self._regexps[self._regexpIndex].toString());
+    this.log('URI encoded data: ' + encodeURI(data));
+    throw new Error('failed match');
+  }
   this.state = 'waiting';
-  cb();
+  this.log('match: ' + match);
+  cb(null, match);
 };
+
+FONA.prototype._setupWriteParseQueue = function(cb) {
+
+  var self = this;
+  
+  this._q = async.priorityQueue(function (task, callback) {
+    self._regexpIndex = 0;
+    self._regexps = task.regexps;
+    self._matches = [];
+    self._callback = callback;
+
+    // TODO: add a sanity check timeout for 
+    // cases where data doesn't come back
+    // so that we can either error out or callback 
+    //to queue to execute next task
+
+    // Prepare to Parse
+    self.log('add serial port listener');
+    self._serialPort.on('data', parseData);
+     
+    // Write
+    if (!!task.rawCommand) {
+      self.call('write', task.rawCommand);
+    } else {
+      self.call('write', task.command + "\n\r");
+    }
+
+  }, 1);
+
+
+  // Parse
+  var parseData = function(data) {
+    var regexp = self._regexps[self._regexpIndex];
+    self.call('parse', data, regexp, function(err, match) {
+      self.log('add match to matches array');
+      console.log('match: ', match);
+      self._matches.push(match);
+      self._regexpIndex++;
+      if (self._regexpIndex >= self._regexps.length) {
+        self.log('remove serial port listener');
+        self._serialPort.removeListener('data', parseData);
+        console.log('matches: ', self._matches);
+        self._callback(self._matches);
+      }
+    });
+  }
+
+  cb();
+}
 
 FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
   
@@ -326,57 +385,6 @@ FONA.prototype._enqueueSimple = function(command, regexp, cb) {
     function (matches) {
       cb(matches);
     });
-}
-
-FONA.prototype._setupWriteParseQueue = function(cb) {
-
-  var self = this;
-  
-  this._q = async.priorityQueue(function (task, callback) {
-    self._regexpIndex = 0;
-    self._regexps = task.regexps;
-    self._matches = [];
-    self._callback = callback;
-
-    // TODO: add a sanity check timeout for 
-    // cases where data doesn't come back
-    // and we can either error out or callback
-    // to execute next task
-
-    self.log('add serial port listener');
-    self._serialPort.on('data', parseData);
-     
-    if (!!task.rawCommand) {
-      self.call('write', task.rawCommand);
-    } else {
-      self.call('write', task.command + "\n\r");
-    }
-
-  }, 1);
-
-  var parseData = function(data) {
-    var regexp = self._regexps[self._regexpIndex];
-    self.call('parse', data, regexp);
-    var match = data.match(regexp);
-    if (!!match) {
-      self._matches.push(match);
-      self.log('match: true');
-    } else {
-      self.log('failed match on data: ' + data);
-      self.log('with regexp: ' + self._regexps[self._regexpIndex].toString());
-      self.log('URI encoded data: ' + encodeURI(data));
-      throw new Error('failed match');
-    }
-
-    self._regexpIndex++;
-    if (self._regexpIndex >= self._regexps.length) {
-      self.log('remove serial port listener');
-      self._serialPort.removeListener('data', parseData);
-      self._callback(self._matches);
-    }
-  };
-
-  cb();
 }
 
 RegExp.quote = function(str) {
