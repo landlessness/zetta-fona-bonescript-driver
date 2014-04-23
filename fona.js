@@ -5,7 +5,7 @@ var async = require('async');
 
 var FONA = module.exports = function() {
   Device.call(this);
-  this.smsMessages = [];
+  this.smsMessages = {};
   this._serialPort = arguments[0];
   this._resetPin = arguments[1];
   
@@ -80,14 +80,15 @@ FONA.prototype._setupQueue = function(cb) {
         } else {
           self.log('failed match on data: ' + encodeURI(data));
           self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
-          throw new Error('failed match');
+          // throw new Error('failed match');
         }
         qContext._regexpIndex++;
-        if (qContext._regexpIndex >= task.regexps.length) {
-          self._serialPort.removeListener('data', arguments.callee);
-          processMatch(qContext._matches);
-        }
       });
+      if (qContext._regexpIndex >= task.regexps.length) {
+        console.log('arguments.callee: ', arguments.callee);
+        self._serialPort.removeListener('data', arguments.callee);
+        processMatch(qContext._matches);
+      }
     };
     self._serialPort.on('data', parseData);
     self.call('write', task.command);
@@ -187,13 +188,17 @@ FONA.prototype._requestSignalQuality = function() {
 }
 
 FONA.prototype._requestAllSMSMessages = function() {
+  var self = this;
+  
   // the SMS array is 1-based (not 0-based)
-  for (messageIndex = 1; messageIndex <= this.smsCount; messageIndex++) {
-    this.readSMS(messageIndex, function() {});
-  }
+  this._requestSMSCountAndCapacity(function() {
+    for (messageIndex = 1; messageIndex <= self.smsCount; messageIndex++) {
+      self.readSMS(messageIndex, function() {});
+    }
+  });
 }
 
-FONA.prototype._requestSMSCountAndCapacity = function() {
+FONA.prototype._requestSMSCountAndCapacity = function(cb) {
   var self = this;
 
   this._enqueue({command: 'AT+CMGF=1', regexps: [/^AT\+CMGF=1/,/OK/]}, function() {});
@@ -208,6 +213,7 @@ FONA.prototype._requestSMSCountAndCapacity = function() {
     function (matches) {
       self.smsCount = matches[1][1];
       self.smsCapacity = matches[1][2];
+      cb();
     });
 }
 
@@ -256,8 +262,7 @@ FONA.prototype._requestVitals = function(context) {
   if (this.available('write')) {
     this._requestFMVolume();
     this._requestVolume();
-    // this._requestSMSCountAndCapacity();
-    // this._requestAllSMSMessages();
+    this._requestAllSMSMessages();
     // this._requestDeviceDateTime();
     // this._requestPacketDomainServiceStatus();
     // this._requestADCVoltage();
