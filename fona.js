@@ -1,7 +1,7 @@
 var Device = require('zetta-device');
 var util = require('util');
 
-var Fona = module.exports = function(serialPort) {
+var FONA = module.exports = function(serialPort) {
   Device.call(this);
 
   this.smsMessages = [];
@@ -13,13 +13,13 @@ var Fona = module.exports = function(serialPort) {
   });
   
 };
-util.inherits(Fona, Device);
+util.inherits(FONA, Device);
 
-Fona.prototype.init = function(config) {
+FONA.prototype.init = function(config) {
   
   config
-  .name('Adafruit Fona')
-  .type('fona')
+  .name('Adafruit FONA')
+  .type('FONA')
   .monitor('receivedSignalStrengthDBM', {title: 'Received Signal Strength', units: 'dBm' })
   .monitor('receivedSignalStrengthCondition')
   .monitor('batteryPercentage')
@@ -46,7 +46,7 @@ Fona.prototype.init = function(config) {
   
 };
 
-Fona.prototype.write = function(command, cb) {
+FONA.prototype.write = function(command, cb) {
   this.state = 'writing';
   this._serialPort.write(command + '\n\r');
   this.log('writing command: ' + command);
@@ -54,7 +54,7 @@ Fona.prototype.write = function(command, cb) {
   cb();
 };
 
-Fona.prototype.sendSMS = function(phoneNumber, message, cb) {
+FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
   this.state = 'sending-sms';
   this._serialPort.write('AT+CMGF=1' + '\n\r');
   this._serialPort.write('AT+CMGS="' + phoneNumber + '"' + '\n\r');
@@ -64,7 +64,7 @@ Fona.prototype.sendSMS = function(phoneNumber, message, cb) {
   cb();
 };
 
-Fona.prototype.readSMS = function(index, cb) {
+FONA.prototype.readSMS = function(index, cb) {
   this.log('readSMS: ' + index);
   this.call('write', 'AT+CMGF=1');
   this.call('write', 'AT+CSDH=1');
@@ -72,37 +72,37 @@ Fona.prototype.readSMS = function(index, cb) {
   cb();
 }
 
-Fona.prototype._requestBatteryPercentAndVoltage = function() {
+FONA.prototype._requestBatteryPercentAndVoltage = function() {
   this.call('write', 'AT+CBC');
 }
 
-Fona.prototype._requestADCVoltage = function() {
+FONA.prototype._requestADCVoltage = function() {
   this.call('write', 'AT+CADC?');
 }
 
-Fona.prototype._requestSIMCCID = function() {
+FONA.prototype._requestSIMCCID = function() {
   this.call('write', 'AT+CCID');
 }
 
-Fona.prototype._requestSMSCountAndCapacity = function() {
+FONA.prototype._requestSMSCountAndCapacity = function() {
   this.call('write', 'AT+CMGF=1');
   this.call('write', 'AT+CPMS?');
 }
 
-Fona.prototype._requestSMSCountAndCapacity = function() {
+FONA.prototype._requestSMSCountAndCapacity = function() {
   this.call('write', 'AT+CMGF=1');
   this.call('write', 'AT+CPMS?');
 }
 
-Fona.prototype._requestRegistrationStatusAndAccessTechnology = function() {
+FONA.prototype._requestRegistrationStatusAndAccessTechnology = function() {
   this.call('write', 'AT+CREG?');
 }
 
-Fona.prototype._requestSignalQuality = function() {
+FONA.prototype._requestSignalQuality = function() {
   this.call('write', 'AT+CSQ');
 }
 
-Fona.prototype._requestVitals = function(context) {
+FONA.prototype._requestVitals = function(context) {
   this._requestADCVoltage();
   this._requestBatteryPercentAndVoltage();
   this._requestSMSCountAndCapacity();
@@ -111,7 +111,7 @@ Fona.prototype._requestVitals = function(context) {
   this._requestSignalQuality();
 }
 
-Fona.prototype._parseATData = function(data) {
+FONA.prototype._parseATData = function(data) {
   var match = null;
   this.log('parsing AT data: ' + data);
   
@@ -156,7 +156,7 @@ Fona.prototype._parseATData = function(data) {
   }
 }
 
-Fona.prototype._receivedSignalStrengthIndicatorMap = {
+FONA.prototype._receivedSignalStrengthIndicatorMap = {
   2: {dBm: -109,
     condition: 'Marginal'},
   3: {dBm: -107,
