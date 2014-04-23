@@ -46,6 +46,7 @@ FONA.prototype.init = function(config) {
 
   this._setupWriteParseQueue(function() {
     self.resetFONA(function() {
+      self._requestFundamentels();
       self._requestVitals();
       setInterval(function() {
         self._requestVitals();
@@ -260,20 +261,25 @@ FONA.prototype._requestTriangulatedLocation = function() {
   });
 }
 
+FONA.prototype._requestFundamentels = function(context) {
+  if (this.available('write')) {
+    this._requestSIMCCID();
+    this._requestIMEI();
+  }
+}
+
 FONA.prototype._requestVitals = function(context) {
   if (this.available('write')) {
-    // this._requestFMVolume();
-    // this._requestVolume();
-    // this._requestDeviceDateTime();
-    // this._requestPacketDomainServiceStatus();
-    // this._requestADCVoltage();
-    // this._requestBatteryPercentAndVoltage();
-    // this._requestSIMCCID();
-    // this._requestIMEI();
-    // this._requestRegistrationStatusAndAccessTechnology();
-    // this._requestSignalQuality();
+    this._requestFMVolume();
+    this._requestVolume();
+    this._requestDeviceDateTime();
+    this._requestPacketDomainServiceStatus();
+    this._requestADCVoltage();
+    this._requestBatteryPercentAndVoltage();
+    this._requestRegistrationStatusAndAccessTechnology();
+    this._requestSignalQuality();
     this._requestTriangulatedLocation();
-    // this._requestAllSMSMessages();
+    this._requestAllSMSMessages();
   }
 }
 
