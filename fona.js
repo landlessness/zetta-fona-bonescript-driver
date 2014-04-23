@@ -22,18 +22,20 @@ Fona.prototype.init = function(config) {
   .monitor('batteryVoltage')
   .monitor('batteryPercentage')
   .state('waiting')
-  .when('waiting', { allow: ['write']})
+  .when('waiting', { allow: ['write', 'send-sms']})
   .when('writing', { allow: [] })
-  .map('write', this.write, [
-    { name: 'command', type: 'text'}
-  ]);
+  .map('write', this.write, [{ name: 'command', type: 'text'}])
+  .map('send-sms', this.sendSMS, [
+    { name: 'phoneNumber', type: 'text'},
+    { message: 'message', type: 'text'},
+    ]);
   
   var self = this;
   setInterval(function() {
     self.requestADCVoltage();
     self.requestBatteryPercentAndVoltage();
     self.requestSIMCCID();
-  }, 1000);
+  }, 10000);
   
 };
 
@@ -42,6 +44,19 @@ Fona.prototype.write = function(command, cb) {
   this._serialPort.write(command + '\n\r');
   this.log('writing command: ' + command);
   this.state = 'waiting';
+  cb();
+};
+
+Fona.prototype.sendSMS = function(phoneNumber, message, cb) {
+  this.state = 'sending-sms';
+  
+  this._serialPort.write('AT+CMGF=1' + '\n\r');
+  this._serialPort.write('AT+CMGS="' + phoneNumber + '"' + '\n\r');
+  this._serialPort.write('> ' + message + '\n\r');
+  this._serialPort.write([0x1a]);
+
+  this.state = 'waiting';
+
   cb();
 };
 
