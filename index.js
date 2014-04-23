@@ -9,6 +9,7 @@ var FONAScout = module.exports = function() {
   Scout.call(this);
   this.serialPortLocation = arguments[0];
   this.resetPin = arguments[1];
+  this.apn = arguments[2];
   this._serialPort = null;
 };
 util.inherits(FONAScout, Scout);
@@ -16,7 +17,6 @@ util.inherits(FONAScout, Scout);
 FONAScout.prototype.init = function(next) {
   this._serialPort = new serialport.SerialPort(this.serialPortLocation, {
     baudRate: 115200,
-    // parser: serialport.parsers.raw
     parser: serialport.parsers.readline('\r\n')
   });
 
@@ -33,9 +33,9 @@ FONAScout.prototype.init = function(next) {
         return;
       }
       if (results.length) {
-        self.provision(results[0], FONA, self._serialPort, self.resetPin);
+        self.provision(results[0], FONA, self._serialPort, self.resetPin, self.apn);
       } else {
-        self.discover(FONA, self._serialPort, self.resetPin);
+        self.discover(FONA, self._serialPort, self.resetPin, self.apn);
       }
     });
     next();

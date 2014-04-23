@@ -8,17 +8,15 @@ var FONA = module.exports = function() {
   this.smsMessages = {};
   this._serialPort = arguments[0];
   this._resetPin = arguments[1];
-  
+  this._apn = arguments[2];
   this._serialPort.on('data', function(data) {
     console.log('RAW ===\n\n' + data + '\n\n=== RAW');
   });
-
 };
 util.inherits(FONA, Device);
 
 FONA.prototype.init = function(config) {
   var self = this;
-
   config
   .name('Adafruit FONA')
   .type('FONA')
@@ -45,7 +43,7 @@ FONA.prototype.init = function(config) {
     { name: 'phoneNumber', title: 'Phone Number to Send SMS', type: 'text'},
     { name: 'message', title: 'Body of the SMS', type: 'text'},
     ]);
-  
+
   this._setupWriteParseQueue(function() {
     self.resetFONA(function() {
       self._requestVitals();
@@ -188,7 +186,6 @@ FONA.prototype._requestSignalQuality = function() {
 
 FONA.prototype._requestAllSMSMessages = function() {
   var self = this;
-  // the SMS array is 1-based (not 0-based)
   this._requestSMSCountAndCapacity(function() {
     for (messageIndex = 1; messageIndex <= self.smsCount; messageIndex++) {
       self.readSMS(messageIndex, function() {});
@@ -197,23 +194,14 @@ FONA.prototype._requestAllSMSMessages = function() {
 
 FONA.prototype._requestSMSCountAndCapacity = function(cb) {
   var self = this;
-
   this._enqueue({
     command: 'AT+CMGF=1', 
     regexps: [/^AT\+CMGF=1/,/OK/]}, function() {});
-
-  this._enqueue(
-    { command: 'AT+CPMS?', 
-      regexps: [
-        /^AT\+CPMS\?/,
-        /^\+CPMS: "[A-Z_]+",(\d+),(\d+),.*$/,
-        /^$/,
-        /^OK$/]},
-    function (matches) {
-      self.smsCount = matches[1][1];
-      self.smsCapacity = matches[1][2];
-      cb();
-    });
+  this._enqueueSimple('AT+CPMS?', /^\+CPMS: "[A-Z_]+",(\d+),(\d+),.*$/, function (matches) {
+    self.smsCount = matches[1][1];
+    self.smsCapacity = matches[1][2];
+    cb();
+  });
 }
 
 FONA.prototype._requestVolume = function() {
@@ -247,97 +235,45 @@ FONA.prototype._requestPacketDomainServiceStatus = function() {
 
 FONA.prototype._requestTriangulatedLocation = function() {
   var self = this;
-  // TODO: get this working
-  this._enqueue({command: 'AT+SAPBR=1,1', regexps: /^AT\+SAPBR=1,1\r\r\nOK/}, function() {});
-    
-  this._enqueue({command: 'AT+CIPGSMLOC=1,1', regexps: /^AT\+CIPGSMLOC=1,1\r\r\n\+CIPGSMLOC: (\d+)/},
-    function (match) {self.fmVolume = match[1]});
+
+  var setBearer = 'AT+SAPBR=3,1,"CONTYPE","GPRS"';
+  this._enqueue({
+    command: setBearer, 
+    regexps: [new RegExp(RegExp.quote(setBearer)), /OK/]}, function() {});
+
+  var setAPN = 'AT+SAPBR=3,1,"APN","' + this._apn + '"';
+  this._enqueue({
+    command: setAPN,
+    regexps: [new RegExp(RegExp.quote(setAPN)), /OK/]}, function() {});
+
+  var activateBearer = 'AT+SAPBR=1,1';
+  this._enqueue({
+    command: activateBearer,
+    regexps: [new RegExp(RegExp.quote(activateBearer)), /OK|ERROR/]}, function() {});
+
+  this._enqueueSimple('AT+CIPGSMLOC=1,1', /^\+CIPGSMLOC: (\d+),([0-9\-\.]+),([0-9\-\.]+),([0-9/]+),([0-9:]+)$/, function (matches) {
+    self.triangulationMysteryParam = matches[1][1];
+    self.triangulationLongitude = matches[1][2];
+    self.triangulationLatitude = matches[1][3];
+    self.triangulationDate = matches[1][4];
+    self.triangulationTime = matches[1][5];
+  });
 }
 
 FONA.prototype._requestVitals = function(context) {
   if (this.available('write')) {
-    this._requestFMVolume();
-    this._requestVolume();
-    this._requestDeviceDateTime();
-    this._requestPacketDomainServiceStatus();
-    this._requestADCVoltage();
-    this._requestBatteryPercentAndVoltage();
-    this._requestSIMCCID();
-    this._requestIMEI();
-    this._requestRegistrationStatusAndAccessTechnology();
-    this._requestSignalQuality();
-    // this._requestTriangulatedLocation();
-    this._requestAllSMSMessages();
-  }
-}
-
-FONA.prototype._parseATData = function(data) {
-  var match = null;
-  this.log('parsing AT data: ' + data);
-  
-  switch (true) {
-    case !!(match = data.match(/^\+CIPGSMLOC: \d+,([0-9\-\.]+),([0-9\-\.]+),([0-9/]+),([0-9:]+)$/)):
-      this.triangulationLongitude = match[1];
-      this.triangulationLatitude = match[2];
-      this.triangulationDate = match[3];
-      this.triangulationTime = match[4];
-      break;
-    case !!(match = data.match(/^\+CGATT: (\d+)$/)):
-      this.packetDomainServiceStatus = match[1];
-      this.packetDomainServiceStatusDescription = this._packetDomainServiceStatusMap[match[1]]['description'];
-      break;
-    case !!(match = data.match(/^\+CLVL: (\d+)$/)):
-      this.volume = match[1];
-      break;
-    case !!(match = data.match(/^\+FMVOLUME: (\d+)$/)):
-      this.fmVolume = match[1];
-      break;
-    case !!(match = data.match(/^\+CADC: .*,(.*)$/)):
-      this.adcVoltage = match[1];
-      break;
-    case !!(match = data.match(/^\+CREG: (.*),(.*)$/)):
-      this.registrationStatus = match[1];
-      this.registrationStatusDescription = this._registrationStatusMap[match[1]]['description'];
-      this.accessTechnology = match[2];
-      this.accessTechnologyDescription = this._accessTechnologyMap[match[1]]['description'];
-      break;
-    case !!(match = data.match(/^\+CSQ: (\d*),(\d*)$/)):
-      this.receivedSignalStrength = match[1];
-      this.receivedSignalStrengthDBM = this._receivedSignalStrengthIndicatorMap[match[1]]['dBm'];
-      this.receivedSignalStrengthCondition = this._receivedSignalStrengthIndicatorMap[match[1]]['condition'];
-      this.bitErrorRate = match[2];
-      break;
-    case !!(match = data.match(/^\+CBC: .*,(.*),(.*)$/)):
-      this.batteryPercentage = match[1];
-      this.batteryVoltage = match[2];
-      break;
-    case !!(match = data.match(/^\+CPMS: "[A-Z_]+",(\d+),(\d+),.*$/)):
-      this.smsCount = match[1];
-      this.smsCapacity = match[2];
-      break;
-    case !!(match = data.match(/^\+CCLK: "([^"]*)"/)):
-      this.deviceDateTime = match[1];
-      break;
-    case !!(match = data.match(/^\+CMGR: "([A-Z]+) ([A-Z]+)","([^"]*)","([^"]*)","([^"]*)",(\d+),(\d+),(\d+),(\d+),"([^"]*)",(\d+),(\d+).*$/)):
-      this.smsMessages.push(
-        {
-          receivedState: match[1],
-          readState: match[2],
-          sendersPhoneNumber: match[3],
-          timeStamp: match[5]
-        }
-      );
-      break;
-    case !!(match = data.match(/^(\d{15})$/)):
-      // keep check got SIM CCIDone last
-      this.imei = match[1];
-      break;
-    case !!(match = data.match(/^(\d[a-zA-Z0-9]*)$/)):
-      // keep check got SIM CCIDone last
-      this.simCCID = match[1];
-      break;
-    default:
-      break;
+    // this._requestFMVolume();
+    // this._requestVolume();
+    // this._requestDeviceDateTime();
+    // this._requestPacketDomainServiceStatus();
+    // this._requestADCVoltage();
+    // this._requestBatteryPercentAndVoltage();
+    // this._requestSIMCCID();
+    // this._requestIMEI();
+    // this._requestRegistrationStatusAndAccessTechnology();
+    // this._requestSignalQuality();
+    this._requestTriangulatedLocation();
+    // this._requestAllSMSMessages();
   }
 }
 
@@ -360,6 +296,78 @@ FONA.prototype.resetFONA = function(cb) {
       cb();
     }, 100);
   }, 10);
+}
+
+FONA.prototype._enqueue = function(command, cb) {
+  var self = this;
+  this._q.push(
+    command,
+    1,
+    function (err) {
+      var matches = arguments[0];
+      cb(matches);
+    });
+  this.log(
+    'queue #length: ' + this._q.length() +
+    ' #started: ' + this._q.started +
+    ' #running: ' + this._q.running() +
+    ' #idle: ' + this._q.idle() +
+    ' #concurrency: ' + this._q.concurrency +
+    ' #paused: ' + this._q.paused
+  );
+}
+
+FONA.prototype._enqueueSimple = function(command, regexp, cb) {
+  this._enqueue({
+    command: command, 
+    regexps: [new RegExp(RegExp.quote(command) + '\\s*'), regexp, /^$/, /OK/]},
+    function (matches) {
+      cb(matches);
+    });
+}
+
+FONA.prototype._setupWriteParseQueue = function(cb) {
+
+  var self = this;
+  
+  this._q = async.priorityQueue(function (task, processMatch) {
+    var qContext = this;
+    qContext._regexpIndex = 0;
+    qContext._matches = [];
+
+    var parseData = function(data) {
+      self.call('parse', data, task.regexps[qContext._regexpIndex], function(match) {
+        if (!!match) {
+          qContext._matches.push(match);
+          self.log('match: true');
+        } else {
+          self.log('failed match on data: ' + encodeURI(data));
+          self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
+          throw new Error('failed match');
+        }
+        qContext._regexpIndex++;
+      });
+
+      if (qContext._regexpIndex >= task.regexps.length) {
+        self.log('remove serial port listener');
+        self._serialPort.removeListener('data', arguments.callee);
+        processMatch(qContext._matches);
+      }
+
+    };
+
+    self.log('add serial port listener');
+    self._serialPort.on('data', parseData);
+     
+    if (!!task.rawCommand) {
+      self.call('write', task.rawCommand);
+    } else {
+      self.call('write', task.command + "\n\r");
+    }
+
+  }, 1);
+  
+  cb();
 }
 
 FONA.prototype._receivedSignalStrengthIndicatorMap = {
@@ -451,78 +459,6 @@ FONA.prototype._accessTechnologyMap = {
 FONA.prototype._packetDomainServiceStatusMap = {
   0: {description: 'not attached'},
   1: {description: 'attached'},
-}
-
-FONA.prototype._enqueue = function(command, cb) {
-  var self = this;
-  this._q.push(
-    command,
-    1,
-    function (err) {
-      var matches = arguments[0];
-      cb(matches);
-    });
-  this.log(
-    'queue #length: ' + this._q.length() +
-    ' #started: ' + this._q.started +
-    ' #running: ' + this._q.running() +
-    ' #idle: ' + this._q.idle() +
-    ' #concurrency: ' + this._q.concurrency +
-    ' #paused: ' + this._q.paused
-  );
-}
-
-FONA.prototype._enqueueSimple = function(command, regexp, cb) {
-  this._enqueue({
-    command: command, 
-    regexps: [new RegExp(RegExp.quote(command) + '\\s*'), regexp, /^$/, /OK/]},
-    function (matches) {
-      cb(matches);
-    });
-}
-
-FONA.prototype._setupWriteParseQueue = function(cb) {
-
-  var self = this;
-  
-  this._q = async.priorityQueue(function (task, processMatch) {
-    var qContext = this;
-    qContext._regexpIndex = 0;
-    qContext._matches = [];
-
-    var parseData = function(data) {
-      self.call('parse', data, task.regexps[qContext._regexpIndex], function(match) {
-        if (!!match) {
-          qContext._matches.push(match);
-          self.log('match: true');
-        } else {
-          self.log('failed match on data: ' + encodeURI(data));
-          self.log('with regexp: ' + task.regexps[qContext._regexpIndex].toString());
-          throw new Error('failed match');
-        }
-        qContext._regexpIndex++;
-      });
-
-      if (qContext._regexpIndex >= task.regexps.length) {
-        self.log('remove serial port listener');
-        self._serialPort.removeListener('data', arguments.callee);
-        processMatch(qContext._matches);
-      }
-
-    };
-
-    self.log('add serial port listener');
-    self._serialPort.on('data', parseData);
-     
-    if (!!task.rawCommand) {
-      self.call('write', task.rawCommand);
-    } else {
-      self.call('write', task.command + "\n\r");
-    }
-
-  }, 1);
-  
-  cb();
 }
 
 RegExp.quote = function(str) {
