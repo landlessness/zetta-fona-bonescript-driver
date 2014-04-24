@@ -2,6 +2,7 @@ var Device = require('zetta-device');
 var util = require('util');
 var bone = require('bonescript');
 var async = require('async');
+var AT = require('./lib/at');
 
 var FONA = module.exports = function() {
   Device.call(this);
@@ -46,7 +47,7 @@ FONA.prototype.init = function(config) {
 
   this._setupWriteParseQueue(function() {
     self.resetFONA(function() {
-      self._requestFundamentels();
+      self._requestFundamentals();
       self._requestVitals();
       setInterval(function() {
         self._requestVitals();
@@ -131,6 +132,27 @@ FONA.prototype.readSMS = function(messageIndex, cb) {
     });
 }
 
+FONA.prototype.resetFONA = function(cb) {
+  var self = this;
+  
+  this.state = 'resetting-fona';
+  
+  bone.pinMode(this._resetPin, bone.OUTPUT);
+  
+  this.log('setting reset pin ' + this._resetPin + ' to ' + bone.HIGH);
+  bone.digitalWrite(this._resetPin, bone.HIGH);
+  setTimeout(function() {
+    self.log('setting reset pin ' + self._resetPin + ' to ' + bone.LOW);
+    bone.digitalWrite(self._resetPin, bone.LOW);
+    setTimeout(function() {
+      self.log('setting reset pin ' + self._resetPin + ' to ' + bone.HIGH);
+      bone.digitalWrite(self._resetPin, bone.HIGH);
+      self.state = 'waiting';
+      cb();
+    }, 100);
+  }, 10);
+}
+
 FONA.prototype._requestBatteryPercentAndVoltage = function() {
   var self = this;
   this._enqueueSimple('AT+CBC', /^\+CBC: .*,(.*),(.*)/, function (matches) {
@@ -164,9 +186,9 @@ FONA.prototype._requestRegistrationStatusAndAccessTechnology = function() {
   var self = this;
   this._enqueueSimple('AT+CREG?', /^\+CREG: (.*),(.*)$/, function (matches) {
     self.registrationStatus = matches[1][1];
-    self.registrationStatusDescription = self._registrationStatusMap[matches[1][1]]['description'];
+    self.registrationStatusDescription = AT.registrationStatusMap[self.registrationStatus]['description'];
     self.accessTechnology = matches[1][2];
-    self.accessTechnologyDescription = self._accessTechnologyMap[matches[1][2]]['description'];
+    self.accessTechnologyDescription = AT.accessTechnologyMap[self.accessTechnology]['description'];
   });
 }
 
@@ -174,8 +196,8 @@ FONA.prototype._requestSignalQuality = function() {
   var self = this;
   this._enqueueSimple('AT+CSQ', /^\+CSQ: (\d*),(\d*)$/, function (matches) {
     self.receivedSignalStrength = matches[1][1];
-    self.receivedSignalStrengthDBM = self._receivedSignalStrengthIndicatorMap[matches[1][1]]['dBm'];
-    self.receivedSignalStrengthCondition = self._receivedSignalStrengthIndicatorMap[matches[1][1]]['condition'];
+    self.receivedSignalStrengthDBM = AT.receivedSignalStrengthIndicatorMap[self.receivedSignalStrength]['dBm'];
+    self.receivedSignalStrengthCondition = AT.receivedSignalStrengthIndicatorMap[self.receivedSignalStrength]['condition'];
     self.bitErrorRate = matches[1][2];
   });
 }
@@ -225,7 +247,7 @@ FONA.prototype._requestPacketDomainServiceStatus = function() {
   var self = this;
   this._enqueueSimple('AT+CGATT?', /^\+CGATT: (\d+)/, function (matches) {
     self.packetDomainServiceStatus = matches[1][1];
-    self.packetDomainServiceStatusDescription = self._packetDomainServiceStatusMap[matches[1][1]]['description'];
+    self.packetDomainServiceStatusDescription = AT.packetDomainServiceStatusMap[self.packetDomainServiceStatus]['description'];
   });
 }
 
@@ -256,7 +278,7 @@ FONA.prototype._requestTriangulatedLocation = function() {
   });
 }
 
-FONA.prototype._requestFundamentels = function(context) {
+FONA.prototype._requestFundamentals = function(context) {
   if (this.available('write')) {
     this._requestSIMCCID();
     this._requestIMEI();
@@ -276,27 +298,6 @@ FONA.prototype._requestVitals = function(context) {
     this._requestTriangulatedLocation();
     this._requestAllSMSMessages();
   }
-}
-
-FONA.prototype.resetFONA = function(cb) {
-  var self = this;
-  
-  this.state = 'resetting-fona';
-  
-  bone.pinMode(this._resetPin, bone.OUTPUT);
-  
-  this.log('setting reset pin ' + this._resetPin + ' to ' + bone.HIGH);
-  bone.digitalWrite(this._resetPin, bone.HIGH);
-  setTimeout(function() {
-    self.log('setting reset pin ' + self._resetPin + ' to ' + bone.LOW);
-    bone.digitalWrite(self._resetPin, bone.LOW);
-    setTimeout(function() {
-      self.log('setting reset pin ' + self._resetPin + ' to ' + bone.HIGH);
-      bone.digitalWrite(self._resetPin, bone.HIGH);
-      self.state = 'waiting';
-      cb();
-    }, 100);
-  }, 10);
 }
 
 FONA.prototype._enqueue = function(command, cb) {
@@ -337,6 +338,11 @@ FONA.prototype._setupWriteParseQueue = function(cb) {
     self._matches = [];
     self._callback = callback;
 
+    // TODO: add a sanity check timeout for 
+    // cases where data doesn't come back
+    // and we can either error out or callback
+    // to execute next task
+
     self.log('add serial port listener');
     self._serialPort.on('data', parseData);
      
@@ -371,97 +377,6 @@ FONA.prototype._setupWriteParseQueue = function(cb) {
   };
 
   cb();
-}
-
-FONA.prototype._receivedSignalStrengthIndicatorMap = {
-  2: {dBm: -109,
-    condition: 'Marginal'},
-  3: {dBm: -107,
-    condition: 'Marginal'},
-  4: {dBm: -105,
-    condition: 'Marginal'},
-  5: {dBm: -103,
-    condition: 'Marginal'},
-  6: {dBm: -101,
-    condition: 'Marginal'},
-  7: {dBm: -99,
-    condition: 'Marginal'},
-  8: {dBm: -97,
-    condition: 'Marginal'},
-  9: {dBm: -95,
-    condition: 'Marginal'},
-  10: {dBm: -93,
-    condition: 'OK'},
-  11: {dBm: -91,
-    condition: 'OK'},
-  12: {dBm: -89,
-    condition: 'OK'},
-  13: {dBm: -87,
-    condition: 'OK'},
-  14: {dBm: -85,
-    condition: 'OK'},
-  15: {dBm: -83,
-    condition: 'Good'},
-  16: {dBm: -81,
-    condition: 'Good'},
-  17: {dBm: -79,
-    condition: 'Good'},
-  18: {dBm: -77,
-    condition: 'Good'},
-  19: {dBm: -75,
-    condition: 'Good'},
-  20: {dBm: -73,
-    condition: 'Excellent'},
-  21: {dBm: -71,
-    condition: 'Excellent'},
-  22: {dBm: -69,
-    condition: 'Excellent'},
-  23: {dBm: -67,
-    condition: 'Excellent'},
-  24: {dBm: -65,
-    condition: 'Excellent'},
-  25: {dBm: -63,
-    condition: 'Excellent'},
-  26: {dBm: -61,
-    condition: 'Excellent'},
-  27: {dBm: -59,
-    condition: 'Excellent'},
-  28: {dBm: -57,
-    condition: 'Excellent'},
-  29: {dBm: -55,
-    condition: 'Excellent'},
-  30: {dBm: -53,
-    condition: 'Excellent'}
-}
-
-FONA.prototype._registrationStatusMap = {
-  0: {description: 'not registered, MT is not currently searching a new operator to register to'},
-  1: {description: 'registered, home network'},
-  2: {description: 'not registered, but MT is currently searching a new operator to register to'},
-  3: {description: 'registration denied'},
-  4: {description: 'unknown (e.g. out of GERAN/UTRAN/E-UTRAN coverage)'},
-  5: {description: 'registered, roaming'},
-  6: {description: 'registered for "SMS only", home network (applicable only when indicates E-UTRAN)'},
-  7: {description: 'registered for "SMS only", roaming (applicable only when indicates E-UTRAN)'},
-  8: {description: 'attached for emergency bearer services only (see NOTE 2) (not applicable)'},
-  9: {description: 'registered for "CSFB not preferred", home network (applicable only when indicates E-UTRAN)'},
-  10: {description: 'registered for "CSFB not preferred", roaming (applicable only when indicates E-UTRAN)'}
-}
-
-FONA.prototype._accessTechnologyMap = {
-  0: {description: 'GSM'},
-  1: {description: 'GSM Compact'},
-  2: {description: 'UTRAN'},
-  3: {description: 'GSM w/EGPRS'},
-  4: {description: 'UTRAN w/HSDPA'},
-  5: {description: 'UTRAN w/HSUPA'},
-  6: {description: 'UTRAN w/HSDPA and HSUPA'},
-  7: {description: 'E-UTRAN'}
-}
-
-FONA.prototype._packetDomainServiceStatusMap = {
-  0: {description: 'not attached'},
-  1: {description: 'attached'},
 }
 
 RegExp.quote = function(str) {
