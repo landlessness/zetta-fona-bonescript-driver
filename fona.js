@@ -53,7 +53,7 @@ Fona.prototype.sendSMS = function(phoneNumber, message, cb) {
   
   this._serialPort.write('AT+CMGF=1' + '\n\r');
   this._serialPort.write('AT+CMGS="' + phoneNumber + '"' + '\n\r');
-  this._serialPort.write('> ' + message + '\n\r');
+  this._serialPort.write(message + '\n\r');
   this._serialPort.write([0x1a]);
 
   this.state = 'waiting';
