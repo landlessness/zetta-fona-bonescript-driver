@@ -60,48 +60,13 @@ FONA.prototype.init = function(config) {
     { name: 'message', title: 'Body of the SMS', type: 'text'},
     ]);
 
-  this._serialDevice._setupWriteParseQueue(function() {
-    self.resetFONA(function() {
-      self._requestFundamentals();
+  self.resetFONA(function() {
+    self._requestFundamentals();
+    self._requestVitals();
+    setInterval(function() {
       self._requestVitals();
-      setInterval(function() {
-        self._requestVitals();
-      }, 60000);
-    });
+    }, 60000);
   });
-};
-
-FONA.prototype.write = function(command, cb) {
-  this.state = 'writing';
-  var self = this;
-  this.log('command: ' + command);
-  this.log('command (encoded): ' + encodeURI(command));
-  this._serialPort.write(command, function(err, results) {
-    if (typeof err !== 'undefined') {
-      self.log('write err ' + err);
-      self.log('write results ' + results);
-    }
-  });
-  this.state = 'waiting';
-  cb();
-};
-
-FONA.prototype.parse = function(data, regexp, cb) {
-  this.state = 'parsing';
-  this.log('parsing data: "' + data + '"');
-  this.log('parsing regexp: "' + regexp + '"');
-  var match = data.match(regexp);
-  if (!!match) {
-    this.log('match: true');
-  } else {
-    this.log('failed match on data: ' + data);
-    this.log('with regexp: ' + this._regexps[this._regexpIndex].toString());
-    this.log('URI encoded data: ' + encodeURI(data));
-    throw new Error('failed match');
-  }
-  this.state = 'waiting';
-  this.log('match: ' + match);
-  cb(null, match);
 };
 
 FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
@@ -324,7 +289,3 @@ FONA.prototype._requestVitals = function(context) {
     this._requestAllSMSMessages();
   }
 }
-
-RegExp.quote = function(str) {
-    return (str+'').replace(/([.?*+^$[\]\\(){}|-])/g, "\\$1");
-};
