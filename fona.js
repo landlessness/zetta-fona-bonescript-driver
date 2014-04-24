@@ -93,11 +93,8 @@ FONA.prototype.sendSMS = function(phoneNumber, message, cb) {
     command: 'AT+CMGS="' + phoneNumber + '"',
     regexps: [new RegExp('^AT\\+CMGS="' + phoneNumber + '"\\s*')]}, function() {});
   this._enqueue({
-    command: message, 
-    regexps: [new RegExp('^> ' + message + '\\s*')]}, function() {});
-  this._enqueue({
-    rawCommand: '\u001a',
-    regexps: [/^> \s*/, /^\+CMGS: (\d+)/,/^$/,/OK/]}, function() {});
+    rawCommand: message + '\u001a',
+    regexps: [new RegExp('^> ' + message + '\\s*'), /^\+CMGS: (\d+)/,/^$/,/OK/]}, function() {});
   
   this.state = 'waiting';
 
