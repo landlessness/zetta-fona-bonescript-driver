@@ -45,13 +45,9 @@ FONA.prototype.init = function(config) {
   .monitor('batteryVoltage')
   .monitor('adcVoltage')
   .state('waiting')
-  .when('resetting-fona', {allow: ['parse']})
-  .when('waiting', { allow: ['reset-fona', 'write', 'parse', 'send-sms', 'read-sms']})
-  .when('parsing', { allow: ['reset-fona', 'write', 'parse', 'send-sms', 'read-sms']})
-  .when('writing', { allow: ['reset-fona'] })
+  .when('resetting-fona', {allow: []})
+  .when('waiting', { allow: ['reset-fona', 'send-sms', 'read-sms']})
   .map('reset-fona', this.resetFONA)
-  .map('write', this.write, [{ name: 'command', type: 'text'}])
-  .map('parse', this.parse, [{ name: 'data', type: 'text'}, { name: 'regexp', type: 'text'}])
   .map('read-sms', this.readSMS, [
     { name: 'messageIndex', title: 'Message Index', type: 'range',
       min: 1, step: 1}])
@@ -269,23 +265,19 @@ FONA.prototype._requestTriangulatedLocation = function() {
 }
 
 FONA.prototype._requestFundamentals = function(context) {
-  if (this.available('write')) {
-    this._requestSIMCCID();
-    this._requestIMEI();
-  }
+  this._requestSIMCCID();
+  this._requestIMEI();
 }
 
 FONA.prototype._requestVitals = function(context) {
-  if (this.available('write')) {
-    this._requestFMVolume();
-    this._requestVolume();
-    this._requestDeviceDateTime();
-    this._requestPacketDomainServiceStatus();
-    this._requestADCVoltage();
-    this._requestBatteryPercentAndVoltage();
-    this._requestRegistrationStatusAndAccessTechnology();
-    this._requestSignalQuality();
-    this._requestTriangulatedLocation();
-    this._requestAllSMSMessages();
-  }
+  this._requestFMVolume();
+  this._requestVolume();
+  this._requestDeviceDateTime();
+  this._requestPacketDomainServiceStatus();
+  this._requestADCVoltage();
+  this._requestBatteryPercentAndVoltage();
+  this._requestRegistrationStatusAndAccessTechnology();
+  this._requestSignalQuality();
+  this._requestTriangulatedLocation();
+  this._requestAllSMSMessages();
 }
