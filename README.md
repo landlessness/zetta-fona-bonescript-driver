@@ -1,4 +1,4 @@
-## Node library for Adafruit's FONA with BeagleBone Black
+## Node library for Adafruit's FONA with BeagleBone Black on Zetta
 
 ###Install
 
