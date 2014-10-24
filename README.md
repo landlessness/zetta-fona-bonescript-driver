@@ -1,32 +1,36 @@
-##Zetta starter device driver for any platform
+## Node library for Adafruit's FONA with BeagleBone Black
 
 ###Install
 
 ```
-$> npm install zetta-starter-device-driver
+$> npm install zetta-fona-bonescript-driver
 ```
 
 ###Usage
 
 ```
 var zetta = require('zetta');
-var StarterDevice = require('zetta-starter-device-driver');
+var FONA = require('zetta-fona-bonescript-driver');
 
 zetta()
-  .use(StarterDevice)
+  .use(FONA)
   .listen(1337)
 ```
 
 ### Hardware
 
-* any platform
+* BeagleBone Black
 
 ###Transitions
 
-#####do(message)
+#####write(command)
 
-Calls the device's log() function passing the message param.
+Write to the FONA via AT commands.
 
-###Design
+#####read-sms(index)
 
-This device driver is designed to be the starter code for other device drivers.
+Read the message at the index location.
+
+#####send-sms(phoneNumber, message)
+
+Send a text message to the phoneNumber.
