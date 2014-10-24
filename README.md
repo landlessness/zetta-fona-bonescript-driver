@@ -20,6 +20,7 @@ zetta()
 ### Hardware
 
 * BeagleBone Black
+* Adafruit FONA
 
 ###Transitions
 
