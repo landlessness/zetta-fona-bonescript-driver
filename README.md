@@ -48,7 +48,7 @@ Write operations to the `serial` port are non-blocking. Parsing of the `serial` 
 So, in order for a long-running command - like requesting triangulated location - to finish before the next `serial` command is attempted the data parsing must send a signal to control the execution of the next write command.
 
 #### Waiting
-This is accomplished by a queue worker that first executes the `write` command and then goes into a loop waiting for the expected data to be returned.
+This is accomplished by a `queue` worker that executes the `write` command, `pause`s the `queue` and then goes into an async `whilst` loop waiting for the `emit`ted data to be parsed by the parser. Once the expected data is returned the worker `resume`s the queue.
 
 ###Resources
 While designing and developing this node.js driver for FONA the following resources were helpful:
