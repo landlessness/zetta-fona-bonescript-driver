@@ -41,11 +41,13 @@ Send a text message to the phoneNumber.
 #### Queueing
 The Zetta FONA driver uses a `queue` to execute underlying `serial` commands. The driver periodically executes `serial` commands in order to `monitor` key properties of the device. The internally-generated `serial` requests are `push`ed onto the back of the queue. Requests created by API consumers and other clients are `unshift`ed to the front of the queue.
 
-#### Parsing
+#### Writing
 Write operations to the `serial` port are non-blocking. Parsing of the `serial` data is via an event emitter.
 
+#### Parsing
 So, in order for a long-running command - like requesting triangulated location - to finish before the next `serial` command is attempted the data parsing must send a signal to control the execution of the next write command.
 
+#### Waiting
 This is accomplished by a queue worker that first executes the `write` command and then goes into a loop waiting for the expected data to be returned.
 
 ###Resources
